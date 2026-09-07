@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Binary Spacetime — Tilted Orbit & Misaligned Spins</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#01040a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;background:radial-gradient(circle at 50% 46%,#0b213a 0,#030912 40%,#01040a 76%)}
+.hud{position:fixed;inset:0;pointer-events:none}
+.title{position:absolute;top:18px;left:0;right:0;text-align:center;text-shadow:0 4px 26px #000}
+.title h1{margin:0;font:500 clamp(30px,4.6vw,68px) Georgia,serif;letter-spacing:.014em}
+.title p{margin:8px 16px 0;color:#c4d6e5;font-size:clamp(13px,1.4vw,18px)}
+.badge{display:inline-block;margin-top:9px;padding:6px 10px;border:1px solid rgba(151,207,244,.28);border-radius:999px;background:rgba(4,12,22,.55);color:#abc8df;font-size:11px;letter-spacing:.04em}
+.foot{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:12px;color:#a0b8cc;background:rgba(5,15,27,.80);border:1px solid #29475f;border-radius:999px;padding:8px 12px;backdrop-filter:blur(10px);white-space:nowrap}
+.clock{position:absolute;width:76px;height:76px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,#08131f 0,#040a11 72%,#01040a 100%);box-shadow:0 0 24px currentColor,inset 0 0 15px rgba(255,255,255,.04)}
+.clock::before{content:"";position:absolute;inset:6px;border-radius:50%;border:2px solid currentColor}
+.clock .hand{position:absolute;left:50%;top:50%;width:2px;height:24px;background:currentColor;transform-origin:50% 100%;translate:-50% -100%;border-radius:2px}
+.clock .dot{position:absolute;left:50%;top:50%;width:7px;height:7px;border-radius:50%;background:#fff;transform:translate(-50%,-50%)}
+.clock .lab{position:absolute;left:88px;top:18px;white-space:nowrap;font-size:12px;font-weight:650;text-shadow:0 2px 12px #000}
+.a{color:#ff947b}.b{color:#8de1ff}.c{color:#d1b8ff}
+.legend{position:absolute;left:18px;bottom:18px;max-width:350px;padding:12px 14px;border-radius:14px;background:rgba(4,12,22,.64);border:1px solid rgba(139,193,228,.18);color:#aabfd0;font-size:11px;line-height:1.48;backdrop-filter:blur(10px)}
+.legend b{color:#edf5fb;font-weight:650}
+#error{display:none;position:fixed;inset:0;place-items:center;padding:30px;text-align:center;background:#02050a;color:#fff;font-size:18px;line-height:1.5}
+@media(max-width:760px){
+  .title h1{font-size:25px}
+  .title p{display:none}
+  .badge{font-size:9.5px;padding:5px 8px}
+  .clock{width:54px;height:54px}
+  .clock .hand{height:18px}
+  .clock .lab{left:50%;top:58px;transform:translateX(-50%);font-size:9.5px}
+  .legend{left:9px;right:9px;bottom:54px;max-width:none;font-size:10.5px;padding:9px 11px;line-height:1.42}
+  .foot{font-size:10.5px;padding:7px 10px}
+}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="hud">
+  <div class="title">
+    <h1>A Tilted Binary Warps Spacetime Asymmetrically</h1>
+    <p>Unequal masses orbit a shifted barycenter, while each body spins around its own tilted axis.</p>
+    <div class="badge">CONCEPTUAL BINARY / FRAME-DRAGGING / GRAVITATIONAL-WAVE VISUALIZATION</div>
+  </div>
+
+  <div id="cA" class="clock a"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
+  <div id="cB" class="clock b"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
+  <div id="cC" class="clock c"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
+
+  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, blue where the light body's does. The two faint rings are the orbital paths.</div>
+  <div class="foot">Drag to orbit · pinch or scroll to zoom · double-tap to reset</div>
+</div>
+
+<div id="error">WebGL could not start.<br>This page needs a browser with WebGL enabled.</div>
+
+<script>
+(() => {
+"use strict";
+
+const canvas=document.getElementById("gl");
+const gl=canvas.getContext("webgl",{antialias:true,alpha:true})||canvas.getContext("experimental-webgl");
+if(!gl){document.getElementById("error").style.display="grid";return;}
+
+const LINE_VS=`
+attribute vec3 aPos;
+attribute vec3 aColor;
+uniform mat4 uMVP;
+uniform float uTime;
+uniform float uDeform;
+uniform float uCamDist;
+varying vec3 vColor;
+varying float vWarp;
+varying float vFade;
+varying float vTwist;
+varying float vTwistMag;
+
+const float PI=3.141592653589793;
+
+mat3 Rx(float a){
+  float c=cos(a),s=sin(a);
+  return mat3(1,0,0, 0,c,s, 0,-s,c);
+}
+mat3 Rz(float a){
+  float c=cos(a),s=sin(a);
+  return mat3(c,s,0, -s,c,0, 0,0,1);
+}
+
+// orbit is intrinsically in local XZ plane, then tilted into world space
+vec3 tiltOrbit(vec3 p){
+  return Rz(0.34)*Rx(-0.42)*p;
+}
+
+vec3 bodyA(){
+  float a=uTime*0.62;
+  // heavier body, smaller orbital radius
+  return tiltOrbit(vec3(cos(a)*0.48,0.0,sin(a)*0.48));
+}
+vec3 bodyB(){
+  float a=uTime*0.62+PI;
+  // lighter body, larger orbital radius
+  return tiltOrbit(vec3(cos(a)*0.88,0.0,sin(a)*0.88));
+}
+
+vec3 twistAroundAxis(vec3 p, vec3 center, vec3 axis, float amount){
+  vec3 q=p-center;
+  axis=normalize(axis);
+  vec3 para=axis*dot(q,axis);
+  vec3 perp=q-para;
+  vec3 crossp=cross(axis,perp);
+  float c=cos(amount),s=sin(amount);
+  vec3 rotated=perp*c+crossp*s+para;
+  return center+rotated;
+}
+
+// NOTE: deformCPU() in the JS below is a hand-ported copy of this function.
+// The two must be kept in sync or the floating clocks drift off the lattice.
+vec3 deform(vec3 p, out float outTa, out float outTb){
+  vec3 A=bodyA();
+  vec3 B=bodyB();
+
+  vec3 da=p-A, db=p-B;
+  float ra=length(da)+0.05;
+  float rb=length(db)+0.05;
+
+  // unequal masses: A is stronger than B
+  float fa=0.215/(0.22+ra*ra)*exp(-0.18*ra*ra);
+  float fb=0.135/(0.22+rb*rb)*exp(-0.20*rb*rb);
+
+  p += (A-p)*fa + (B-p)*fb;
+
+  // distinct, misaligned spin axes
+  vec3 axisA=normalize(vec3(0.42,0.88,0.21));
+  vec3 axisB=normalize(vec3(-0.36,0.72,0.59));
+
+  float ta=0.28/(0.17+ra*ra)*exp(-0.50*ra*ra);
+  float tb=-0.22/(0.17+rb*rb)*exp(-0.55*rb*rb);
+  outTa=ta; outTb=tb;
+
+  p=twistAroundAxis(p,A,axisA,ta);
+  p=twistAroundAxis(p,B,axisB,tb);
+
+  // merged near-zone tidal shear
+  float beat=sin(uTime*1.25+length(p)*3.0);
+  p.y += 0.022*beat*exp(-0.42*dot(p,p));
+
+  // far-field gravitational-wave-like stretch/squeeze
+  float r=length(p)+0.001;
+  float wave=0.032*sin(7.2*r-uTime*4.5)/(0.55+r);
+  float envelope=smoothstep(0.78,1.38,r);
+
+  // use the tilted orbital phase to orient the quadrupolar pattern
+  vec3 q=Rx(0.42)*Rz(-0.34)*p;
+  float phase=atan(q.z,q.x)-uTime*0.62;
+  float plus=cos(2.0*phase);
+  float crossm=sin(2.0*phase);
+
+  q.x *= 1.0 + wave*plus*envelope;
+  q.z *= 1.0 - wave*plus*envelope;
+  q.y += wave*0.48*crossm*envelope;
+
+  p=Rz(0.34)*Rx(-0.42)*q;
+
+  return p;
+}
+
+void main(){
+  vec3 p=aPos;
+  float ta=0.0, tb=0.0;
+  // uDeform=0 draws reference geometry (orbit paths) through flat space
+  if(uDeform>0.5) p=deform(aPos,ta,tb);
+  gl_Position=uMVP*vec4(p,1.0);
+
+  // how far this vertex was dragged: the warping becomes the light source.
+  // undeformed reference geometry gets a fixed mid value so it stays visible.
+  float disp=length(p-aPos);
+  vWarp=uDeform>0.5 ? pow(1.0-exp(-disp*6.0),0.6) : 0.55;
+
+  // which body's frame-dragging twist owns this patch of space
+  float wa=abs(ta), wb=abs(tb);
+  vTwist=(wa-wb)/(wa+wb+0.0008);
+  vTwistMag=clamp((wa+wb)*2.5,0.0,1.0);
+
+  // depth cue relative to the camera, so the lattice reads as a volume
+  vFade=clamp((uCamDist+2.2-gl_Position.w)/4.4,0.0,1.0);
+
+  vColor=aColor;
+}
+`;
+
+const LINE_FS=`
+precision mediump float;
+varying vec3 vColor;
+varying float vWarp;
+varying float vFade;
+varying float vTwist;
+varying float vTwistMag;
+uniform float uAlpha;
+void main(){
+  vec3 tintA=vec3(1.00,0.46,0.18);
+  vec3 tintB=vec3(0.24,0.64,1.00);
+  vec3 tint=mix(tintB,tintA,vTwist*0.5+0.5);
+  vec3 c=mix(vColor,tint,vTwistMag*0.80);
+  float intensity=mix(0.42,2.00,vWarp)*mix(0.35,1.05,vFade);
+  gl_FragColor=vec4(c*intensity,uAlpha);
+}
+`;
+
+const SOLID_VS=`
+attribute vec3 aPos;
+attribute vec3 aNormal;
+uniform mat4 uMVP;
+uniform mat4 uModel;
+varying vec3 vN;
+varying vec3 vLocal;
+void main(){
+  vN=mat3(uModel)*aNormal;
+  vLocal=aPos;
+  gl_Position=uMVP*uModel*vec4(aPos,1.0);
+}
+`;
+
+const SOLID_FS=`
+precision mediump float;
+varying vec3 vN;
+varying vec3 vLocal;
+uniform vec3 uBase;
+uniform float uTime;
+void main(){
+  vec3 N=normalize(vN);
+  vec3 L=normalize(vec3(-0.66,0.91,0.48));
+  float d=max(dot(N,L),0.0);
+  float rim=pow(1.0-abs(N.z),2.0);
+  float band=0.5+0.5*sin(atan(vLocal.z,vLocal.x)*19.0-uTime*4.2+vLocal.y*21.0);
+  vec3 dark=uBase*0.18;
+  vec3 c=mix(dark,uBase,0.20+0.80*d);
+  c += band*uBase*0.11;
+  c += rim*uBase*0.22;
+  gl_FragColor=vec4(c,1.0);
+}
+`;
+
+function compile(type,src){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function makeProgram(vs,fs){
+  const p=gl.createProgram();
+  gl.attachShader(p,compile(gl.VERTEX_SHADER,vs));
+  gl.attachShader(p,compile(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+let lineProg,solidProg;
+try{
+  lineProg=makeProgram(LINE_VS,LINE_FS);
+  solidProg=makeProgram(SOLID_VS,SOLID_FS);
+}catch(e){
+  const er=document.getElementById("error");
+  er.style.display="grid";
+  er.innerHTML="WebGL shader error:<br>"+e.message;
+  return;
+}
+
+function I(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1])}
+function mul(a,b){
+  const o=new Float32Array(16);
+  for(let r=0;r<4;r++)for(let c=0;c<4;c++)
+    o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];
+  return o;
+}
+function persp(fov,aspect,n,f){
+  const q=1/Math.tan(fov/2),nf=1/(n-f),o=new Float32Array(16);
+  o[0]=q/aspect;o[5]=q;o[10]=(f+n)*nf;o[11]=-1;o[14]=2*f*n*nf;
+  return o;
+}
+function look(eye,center,up){
+  let zx=eye[0]-center[0],zy=eye[1]-center[1],zz=eye[2]-center[2],zl=Math.hypot(zx,zy,zz);
+  zx/=zl;zy/=zl;zz/=zl;
+  let xx=up[1]*zz-up[2]*zy,xy=up[2]*zx-up[0]*zz,xz=up[0]*zy-up[1]*zx,xl=Math.hypot(xx,xy,xz);
+  xx/=xl;xy/=xl;xz/=xl;
+  let yx=zy*xz-zz*xy,yy=zz*xx-zx*xz,yz=zx*xy-zy*xx,o=I();
+  o[0]=xx;o[4]=xy;o[8]=xz;o[1]=yx;o[5]=yy;o[9]=yz;o[2]=zx;o[6]=zy;o[10]=zz;
+  o[12]=-(xx*eye[0]+xy*eye[1]+xz*eye[2]);
+  o[13]=-(yx*eye[0]+yy*eye[1]+yz*eye[2]);
+  o[14]=-(zx*eye[0]+zy*eye[1]+zz*eye[2]);
+  return o;
+}
+function translate(x,y,z){const o=I();o[12]=x;o[13]=y;o[14]=z;return o}
+function axisAngle(axis,a){
+  let [x,y,z]=axis,l=Math.hypot(x,y,z);x/=l;y/=l;z/=l;
+  const c=Math.cos(a),s=Math.sin(a),t=1-c,o=I();
+  o[0]=t*x*x+c;o[4]=t*x*y-s*z;o[8]=t*x*z+s*y;
+  o[1]=t*x*y+s*z;o[5]=t*y*y+c;o[9]=t*y*z-s*x;
+  o[2]=t*x*z-s*y;o[6]=t*y*z+s*x;o[10]=t*z*z+c;
+  return o;
+}
+
+let yaw=-0.78,pitch=0.34,dist=6.35,drag=false,lx=0,ly=0;
+const reset=()=>{yaw=-0.78;pitch=0.34;dist=6.35};
+// multi-pointer so touch gets pinch-to-zoom, which has no wheel equivalent
+const ptrs=new Map();
+let pinchDist=0,lastTap=0;
+const clampDist=()=>{dist=Math.max(4.1,Math.min(9.5,dist))};
+function spread(){
+  const v=[...ptrs.values()];
+  return v.length<2?0:Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y);
+}
+canvas.addEventListener("pointerdown",e=>{
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  canvas.setPointerCapture(e.pointerId);
+  if(ptrs.size===1){drag=true;lx=e.clientX;ly=e.clientY}
+  else{drag=false;pinchDist=spread()}
+});
+canvas.addEventListener("pointermove",e=>{
+  if(!ptrs.has(e.pointerId))return;
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size>=2){
+    const d=spread();
+    if(pinchDist>0&&d>0){dist*=pinchDist/d;clampDist()}
+    pinchDist=d;
+    return;
+  }
+  if(!drag)return;
+  yaw+=(e.clientX-lx)*.006;
+  pitch+=(e.clientY-ly)*.005;
+  pitch=Math.max(-1.22,Math.min(1.22,pitch));
+  lx=e.clientX;ly=e.clientY;
+});
+function endPtr(e){
+  ptrs.delete(e.pointerId);
+  if(ptrs.size<2)pinchDist=0;
+  if(ptrs.size===1){const p=[...ptrs.values()][0];lx=p.x;ly=p.y;drag=true}
+  else if(ptrs.size===0){
+    drag=false;
+    // explicit double-tap: Safari's dblclick on touch is unreliable
+    if(e.pointerType==="touch"){
+      const now=performance.now();
+      if(now-lastTap<330)reset();
+      lastTap=now;
+    }
+  }
+}
+canvas.addEventListener("pointerup",endPtr);
+canvas.addEventListener("pointercancel",endPtr);
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  dist*=Math.exp(e.deltaY*.001);
+  clampDist();
+},{passive:false});
+canvas.addEventListener("dblclick",reset);
+
+function makeGrid(){
+  const vals=[-1.9,-1.27,-.64,0,.64,1.27,1.9],N=38,e=1.9,a=[];
+  const add=(x,y,z,c)=>a.push(x,y,z,c[0],c[1],c[2]);
+  for(const y of vals)for(const z of vals)for(let i=0;i<N;i++){
+    let p=-e+2*e*i/N,q=-e+2*e*(i+1)/N;
+    add(p,y,z,[.25,.64,.95]);add(q,y,z,[.25,.64,.95]);
+  }
+  for(const x of vals)for(const z of vals)for(let i=0;i<N;i++){
+    let p=-e+2*e*i/N,q=-e+2*e*(i+1)/N;
+    add(x,p,z,[.34,.52,.98]);add(x,q,z,[.34,.52,.98]);
+  }
+  for(const x of vals)for(const y of vals)for(let i=0;i<N;i++){
+    let p=-e+2*e*i/N,q=-e+2*e*(i+1)/N;
+    add(x,y,p,[.47,.81,1.0]);add(x,y,q,[.47,.81,1.0]);
+  }
+  return new Float32Array(a);
+}
+const gridData=makeGrid(),gridBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,gridBuf);
+gl.bufferData(gl.ARRAY_BUFFER,gridData,gl.STATIC_DRAW);
+
+function makeWaveRings(){
+  const a=[],seg=132,radii=[1.18,1.44,1.72,2.0];
+  const add=(x,y,z)=>a.push(x,y,z,.67,.91,1.0);
+  for(const r of radii){
+    for(let plane=0;plane<3;plane++){
+      for(let i=0;i<seg;i++){
+        let t1=i*2*Math.PI/seg,t2=(i+1)*2*Math.PI/seg,p1,p2;
+        if(plane===0){p1=[Math.cos(t1)*r,Math.sin(t1)*r,0];p2=[Math.cos(t2)*r,Math.sin(t2)*r,0]}
+        if(plane===1){p1=[Math.cos(t1)*r,0,Math.sin(t1)*r];p2=[Math.cos(t2)*r,0,Math.sin(t2)*r]}
+        if(plane===2){p1=[0,Math.cos(t1)*r,Math.sin(t1)*r];p2=[0,Math.cos(t2)*r,Math.sin(t2)*r]}
+        add(...p1);add(...p2);
+      }
+    }
+  }
+  return new Float32Array(a);
+}
+const waveData=makeWaveRings(),waveBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,waveBuf);
+gl.bufferData(gl.ARRAY_BUFFER,waveData,gl.STATIC_DRAW);
+
+function sphere(lat=38,lon=54,r=.21,obl=.88){
+  const v=[],idx=[];
+  for(let y=0;y<=lat;y++){
+    const th=y*Math.PI/lat,st=Math.sin(th),ct=Math.cos(th);
+    for(let x=0;x<=lon;x++){
+      const ph=x*2*Math.PI/lon,sp=Math.sin(ph),cp=Math.cos(ph);
+      const nx=cp*st,ny=ct,nz=sp*st;
+      v.push(nx*r,ny*r*obl,nz*r,nx,ny,nz);
+    }
+  }
+  for(let y=0;y<lat;y++)for(let x=0;x<lon;x++){
+    const a=y*(lon+1)+x,b=a+lon+1;
+    idx.push(a,b,a+1,b,b+1,a+1);
+  }
+  return {v:new Float32Array(v),i:new Uint16Array(idx)};
+}
+const sph=sphere(),sphV=gl.createBuffer(),sphI=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,sphV);gl.bufferData(gl.ARRAY_BUFFER,sph.v,gl.STATIC_DRAW);
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,sphI);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,sph.i,gl.STATIC_DRAW);
+
+function resize(){
+  const d=Math.min(devicePixelRatio||1,2),w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);
+  canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);gl.viewport(0,0,canvas.width,canvas.height);
+}
+addEventListener("resize",resize);resize();
+
+const lp={
+  pos:gl.getAttribLocation(lineProg,"aPos"),
+  col:gl.getAttribLocation(lineProg,"aColor"),
+  mvp:gl.getUniformLocation(lineProg,"uMVP"),
+  time:gl.getUniformLocation(lineProg,"uTime"),
+  alpha:gl.getUniformLocation(lineProg,"uAlpha"),
+  deform:gl.getUniformLocation(lineProg,"uDeform"),
+  camDist:gl.getUniformLocation(lineProg,"uCamDist")
+};
+// lines blend additively with depth writes off, so overlapping strands glow
+// instead of fighting over draw order
+function drawLines(buf,count,mvp,time,alpha,deformFlag,camDist){
+  gl.useProgram(lineProg);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+  gl.depthMask(false);
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.enableVertexAttribArray(lp.pos);gl.vertexAttribPointer(lp.pos,3,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(lp.col);gl.vertexAttribPointer(lp.col,3,gl.FLOAT,false,24,12);
+  gl.uniformMatrix4fv(lp.mvp,false,mvp);
+  gl.uniform1f(lp.time,time);
+  gl.uniform1f(lp.alpha,alpha);
+  gl.uniform1f(lp.deform,deformFlag);
+  gl.uniform1f(lp.camDist,camDist);
+  gl.drawArrays(gl.LINES,0,count);
+}
+
+const smoothstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t)};
+
+// inverse of tiltOrbitCPU: Rx(0.42)*Rz(-0.34)
+function untiltCPU(p){
+  const [x,y,z]=p;
+  let c=Math.cos(-.34),s=Math.sin(-.34);
+  const x1=c*x-s*y,y1=s*x+c*y,z1=z;
+  c=Math.cos(.42);s=Math.sin(.42);
+  return [x1,c*y1-s*z1,s*y1+c*z1];
+}
+
+function tiltOrbitCPU(p){
+  let [x,y,z]=p;
+  // Rx(-0.42)
+  let c=Math.cos(-.42),s=Math.sin(-.42),y1=c*y-s*z,z1=s*y+c*z,x1=x;
+  // Rz(0.34)
+  c=Math.cos(.34);s=Math.sin(.34);
+  return [c*x1-s*y1,s*x1+c*y1,z1];
+}
+function bodyPositions(time){
+  const a=time*.62;
+  return [
+    tiltOrbitCPU([Math.cos(a)*.48,0,Math.sin(a)*.48]),
+    tiltOrbitCPU([Math.cos(a+Math.PI)*.88,0,Math.sin(a+Math.PI)*.88])
+  ];
+}
+
+// reference paths, drawn undeformed so the tilt of the orbital plane is
+// readable in the first frame instead of after several seconds of watching
+function makeOrbitRings(){
+  const a=[],seg=190,rings=[[.48,[1.0,.46,.18]],[.88,[.24,.64,1.0]]];
+  for(const [r,c] of rings){
+    for(let i=0;i<seg;i++){
+      const t1=i*2*Math.PI/seg,t2=(i+1)*2*Math.PI/seg;
+      const p1=tiltOrbitCPU([Math.cos(t1)*r,0,Math.sin(t1)*r]);
+      const p2=tiltOrbitCPU([Math.cos(t2)*r,0,Math.sin(t2)*r]);
+      a.push(p1[0],p1[1],p1[2],c[0],c[1],c[2]);
+      a.push(p2[0],p2[1],p2[2],c[0],c[1],c[2]);
+    }
+  }
+  return new Float32Array(a);
+}
+const orbitData=makeOrbitRings(),orbitBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,orbitBuf);
+gl.bufferData(gl.ARRAY_BUFFER,orbitData,gl.STATIC_DRAW);
+
+function drawBody(mvp,time,pos,color,axis,spinRate,scaleFactor){
+  gl.useProgram(solidProg);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(true);
+  gl.bindBuffer(gl.ARRAY_BUFFER,sphV);
+  const p=gl.getAttribLocation(solidProg,"aPos"),n=gl.getAttribLocation(solidProg,"aNormal");
+  gl.enableVertexAttribArray(p);gl.vertexAttribPointer(p,3,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(n);gl.vertexAttribPointer(n,3,gl.FLOAT,false,24,12);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,sphI);
+
+  const spin=axisAngle(axis,time*spinRate);
+  const sc=I();sc[0]=scaleFactor;sc[5]=scaleFactor;sc[10]=scaleFactor;
+  const model=mul(translate(pos[0],pos[1],pos[2]),mul(spin,sc));
+
+  gl.uniformMatrix4fv(gl.getUniformLocation(solidProg,"uMVP"),false,mvp);
+  gl.uniformMatrix4fv(gl.getUniformLocation(solidProg,"uModel"),false,model);
+  gl.uniform3fv(gl.getUniformLocation(solidProg,"uBase"),new Float32Array(color));
+  gl.uniform1f(gl.getUniformLocation(solidProg,"uTime"),time);
+  gl.drawElements(gl.TRIANGLES,sph.i.length,gl.UNSIGNED_SHORT,0);
+}
+
+function twistCPU(p,center,axis,amount){
+  let [x,y,z]=p,[cx,cy,cz]=center,[ax,ay,az]=axis;
+  let al=Math.hypot(ax,ay,az);ax/=al;ay/=al;az/=al;
+  let qx=x-cx,qy=y-cy,qz=z-cz;
+  let dot=qx*ax+qy*ay+qz*az;
+  let px=ax*dot,py=ay*dot,pz=az*dot;
+  let ux=qx-px,uy=qy-py,uz=qz-pz;
+  let vx=ay*uz-az*uy,vy=az*ux-ax*uz,vz=ax*uy-ay*ux;
+  let c=Math.cos(amount),s=Math.sin(amount);
+  return [cx+ux*c+vx*s+px,cy+uy*c+vy*s+py,cz+uz*c+vz*s+pz];
+}
+
+function deformCPU(p,time){
+  let [x,y,z]=p;
+  const [A,B]=bodyPositions(time);
+
+  let ra=Math.hypot(x-A[0],y-A[1],z-A[2])+.05;
+  let rb=Math.hypot(x-B[0],y-B[1],z-B[2])+.05;
+
+  let fa=.215/(.22+ra*ra)*Math.exp(-.18*ra*ra);
+  let fb=.135/(.22+rb*rb)*Math.exp(-.20*rb*rb);
+
+  x+=(A[0]-x)*fa+(B[0]-x)*fb;
+  y+=(A[1]-y)*fa+(B[1]-y)*fb;
+  z+=(A[2]-z)*fa+(B[2]-z)*fb;
+
+  [x,y,z]=twistCPU([x,y,z],A,[.42,.88,.21],.28/(.17+ra*ra)*Math.exp(-.50*ra*ra));
+  [x,y,z]=twistCPU([x,y,z],B,[-.36,.72,.59],-.22/(.17+rb*rb)*Math.exp(-.55*rb*rb));
+
+  y+=.022*Math.sin(time*1.25+Math.hypot(x,y,z)*3)*Math.exp(-.42*(x*x+y*y+z*z));
+
+  // far-field stretch/squeeze, ported from deform() in LINE_VS above
+  const r=Math.hypot(x,y,z)+.001;
+  const wave=.032*Math.sin(7.2*r-time*4.5)/(.55+r);
+  const envelope=smoothstep(.78,1.38,r);
+  let [qx,qy,qz]=untiltCPU([x,y,z]);
+  const phase=Math.atan2(qz,qx)-time*.62;
+  const plus=Math.cos(2*phase),crossm=Math.sin(2*phase);
+  qx*=1+wave*plus*envelope;
+  qz*=1-wave*plus*envelope;
+  qy+=wave*.48*crossm*envelope;
+  return tiltOrbitCPU([qx,qy,qz]);
+}
+
+function projectPoint(p,mvp,time){
+  const w=deformCPU(p,time),x=w[0],y=w[1],z=w[2];
+  const q=[
+    mvp[0]*x+mvp[4]*y+mvp[8]*z+mvp[12],
+    mvp[1]*x+mvp[5]*y+mvp[9]*z+mvp[13],
+    mvp[2]*x+mvp[6]*y+mvp[10]*z+mvp[14],
+    mvp[3]*x+mvp[7]*y+mvp[11]*z+mvp[15]
+  ];
+  if(q[3]<=0)return null;
+  return [(q[0]/q[3]*.5+.5)*innerWidth,(-q[1]/q[3]*.5+.5)*innerHeight,q[2]/q[3]];
+}
+
+function clockRateAt(p,time){
+  const [A,B]=bodyPositions(time);
+  const ra=Math.hypot(p[0]-A[0],p[1]-A[1],p[2]-A[2]);
+  const rb=Math.hypot(p[0]-B[0],p[1]-B[1],p[2]-B[2]);
+  // stronger contribution from heavier body A
+  const pot=.205/(.18+ra)+.125/(.18+rb);
+  return Math.max(.40,Math.min(.985,1-pot));
+}
+
+const clocks=[
+  {el:document.getElementById("cA"),p:[1.10,.26,.18],phase:0},
+  {el:document.getElementById("cB"),p:[-1.18,.62,.58],phase:.7},
+  {el:document.getElementById("cC"),p:[1.68,1.00,-1.02],phase:1.4}
+];
+
+gl.enable(gl.DEPTH_TEST);
+gl.enable(gl.BLEND);
+gl.clearColor(0,0,0,0);
+
+let last=performance.now(),time=0;
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);
+  last=now;
+  time+=dt;
+
+  if(!drag)yaw+=dt*.052;
+
+  const eye=[
+    dist*Math.cos(pitch)*Math.sin(yaw),
+    dist*Math.sin(pitch),
+    dist*Math.cos(pitch)*Math.cos(yaw)
+  ];
+  const P=persp(Math.PI/4,canvas.width/canvas.height,.1,60);
+  const V=look(eye,[0,0,0],[0,1,0]);
+  const mvp=mul(P,V);
+
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+  const [A,B]=bodyPositions(time);
+
+  // opaque bodies first so they lay down depth, then additive lines on top
+  drawBody(mvp,time,A,[1.0,.29,.075],[.42,.88,.21],2.15,1.13);
+  drawBody(mvp,time,B,[.18,.61,1.0],[-.36,.72,.59],-2.55,.90);
+
+  drawLines(gridBuf,gridData.length/6,mvp,time,.34,1,dist);
+  drawLines(waveBuf,waveData.length/6,mvp,time,.10,1,dist);
+  drawLines(orbitBuf,orbitData.length/6,mvp,time,.55,0,dist);
+
+  for(const c of clocks){
+    const q=projectPoint(c.p,mvp,time);
+    const rate=clockRateAt(c.p,time);
+    c.phase+=dt*3.05*rate;
+
+    if(q){
+      c.el.style.display="block";
+      c.el.style.left=q[0]+"px";
+      c.el.style.top=q[1]+"px";
+      c.el.querySelector(".hand").style.transform=`rotate(${c.phase*57.2958}deg)`;
+      c.el.querySelector(".lab").textContent=`LOCAL CLOCK · ${rate.toFixed(2)}×`;
+      const sc=Math.max(.64,Math.min(1.10,1.01-q[2]*.10));
+      c.el.style.scale=sc;
+    }else{
+      c.el.style.display="none";
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
