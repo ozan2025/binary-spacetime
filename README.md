@@ -10,8 +10,12 @@ spinning around its own misaligned axis, and what that does to the space around 
 - **Brightness is warping.** A lattice line glows in proportion to how far it has
   been dragged from where it would sit in flat space.
 - **Color is ownership.** The lattice turns orange where the heavy body's
-  frame-dragging twist dominates and blue where the lighter body's does. The
-  boundary between them moves as they orbit.
+  frame-dragging twist dominates and cyan where the lighter body's does. It
+  stays grey where neither reaches. The boundary between them moves as they
+  orbit.
+- **The bands sweeping outward past the pair are the gravitational waves.**
+  Their real displacement is far too small to see, so the ripple amplitude is
+  given its own amplified glow.
 - **The two faint rings are the orbital paths.** The heavier orange mass keeps
   the tighter one.
 - **The three clocks are pinned to fixed coordinates.** They drift on screen

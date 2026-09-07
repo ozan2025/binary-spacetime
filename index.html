@@ -47,7 +47,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#01040a;col
   <div id="cB" class="clock b"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
   <div id="cC" class="clock c"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
 
-  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, blue where the light body's does. The two faint rings are the orbital paths.</div>
+  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, cyan where the light body's does, grey where neither reaches. Out past the pair, the bright bands sweeping outward are the gravitational waves. The two rings are the orbital paths.</div>
   <div class="foot">Drag to orbit · pinch or scroll to zoom · double-tap to reset</div>
 </div>
 
@@ -114,7 +114,7 @@ vec3 twistAroundAxis(vec3 p, vec3 center, vec3 axis, float amount){
 
 // NOTE: deformCPU() in the JS below is a hand-ported copy of this function.
 // The two must be kept in sync or the floating clocks drift off the lattice.
-vec3 deform(vec3 p, out float outTa, out float outTb){
+vec3 deform(vec3 p, out float outTa, out float outTb, out float outWave){
   vec3 A=bodyA();
   vec3 B=bodyB();
 
@@ -154,6 +154,10 @@ vec3 deform(vec3 p, out float outTa, out float outTb){
   float plus=cos(2.0*phase);
   float crossm=sin(2.0*phase);
 
+  // far-field displacement is ~0.01, far too small to light anything on its
+  // own, so the ripple amplitude gets its own strongly amplified glow term
+  outWave=clamp(abs(wave)*(0.35+0.65*abs(plus))*envelope*58.0,0.0,1.0);
+
   q.x *= 1.0 + wave*plus*envelope;
   q.z *= 1.0 - wave*plus*envelope;
   q.y += wave*0.48*crossm*envelope;
@@ -165,20 +169,23 @@ vec3 deform(vec3 p, out float outTa, out float outTb){
 
 void main(){
   vec3 p=aPos;
-  float ta=0.0, tb=0.0;
+  float ta=0.0, tb=0.0, wv=0.0;
   // uDeform=0 draws reference geometry (orbit paths) through flat space
-  if(uDeform>0.5) p=deform(aPos,ta,tb);
+  if(uDeform>0.5) p=deform(aPos,ta,tb,wv);
   gl_Position=uMVP*vec4(p,1.0);
 
   // how far this vertex was dragged: the warping becomes the light source.
   // undeformed reference geometry gets a fixed mid value so it stays visible.
   float disp=length(p-aPos);
-  vWarp=uDeform>0.5 ? pow(1.0-exp(-disp*6.0),0.6) : 0.55;
+  float near=pow(1.0-exp(-disp*6.0),1.05);
+  vWarp=uDeform>0.5 ? max(near,wv) : 0.42;
 
-  // which body's frame-dragging twist owns this patch of space
+  // which body's frame-dragging twist owns this patch of space. the raw twist
+  // falls off as a gaussian, so it is compressed to reach out past the bodies
+  // instead of hugging them.
   float wa=abs(ta), wb=abs(tb);
   vTwist=(wa-wb)/(wa+wb+0.0008);
-  vTwistMag=clamp((wa+wb)*2.5,0.0,1.0);
+  vTwistMag=pow(clamp((wa+wb)*3.6,0.0,1.0),0.40);
 
   // depth cue relative to the camera, so the lattice reads as a volume
   vFade=clamp((uCamDist+2.2-gl_Position.w)/4.4,0.0,1.0);
@@ -196,11 +203,11 @@ varying float vTwist;
 varying float vTwistMag;
 uniform float uAlpha;
 void main(){
-  vec3 tintA=vec3(1.00,0.46,0.18);
-  vec3 tintB=vec3(0.24,0.64,1.00);
+  vec3 tintA=vec3(1.00,0.34,0.06);
+  vec3 tintB=vec3(0.06,0.74,1.00);
   vec3 tint=mix(tintB,tintA,vTwist*0.5+0.5);
-  vec3 c=mix(vColor,tint,vTwistMag*0.80);
-  float intensity=mix(0.42,2.00,vWarp)*mix(0.35,1.05,vFade);
+  vec3 c=mix(vColor,tint,vTwistMag);
+  float intensity=mix(0.16,4.20,vWarp)*mix(0.35,1.05,vFade);
   gl_FragColor=vec4(c*intensity,uAlpha);
 }
 `;
@@ -359,15 +366,15 @@ function makeGrid(){
   const add=(x,y,z,c)=>a.push(x,y,z,c[0],c[1],c[2]);
   for(const y of vals)for(const z of vals)for(let i=0;i<N;i++){
     let p=-e+2*e*i/N,q=-e+2*e*(i+1)/N;
-    add(p,y,z,[.25,.64,.95]);add(q,y,z,[.25,.64,.95]);
+    add(p,y,z,[.38,.46,.58]);add(q,y,z,[.38,.46,.58]);
   }
   for(const x of vals)for(const z of vals)for(let i=0;i<N;i++){
     let p=-e+2*e*i/N,q=-e+2*e*(i+1)/N;
-    add(x,p,z,[.34,.52,.98]);add(x,q,z,[.34,.52,.98]);
+    add(x,p,z,[.42,.49,.61]);add(x,q,z,[.42,.49,.61]);
   }
   for(const x of vals)for(const y of vals)for(let i=0;i<N;i++){
     let p=-e+2*e*i/N,q=-e+2*e*(i+1)/N;
-    add(x,y,p,[.47,.81,1.0]);add(x,y,q,[.47,.81,1.0]);
+    add(x,y,p,[.46,.55,.67]);add(x,y,q,[.46,.55,.67]);
   }
   return new Float32Array(a);
 }
@@ -377,7 +384,7 @@ gl.bufferData(gl.ARRAY_BUFFER,gridData,gl.STATIC_DRAW);
 
 function makeWaveRings(){
   const a=[],seg=132,radii=[1.18,1.44,1.72,2.0];
-  const add=(x,y,z)=>a.push(x,y,z,.67,.91,1.0);
+  const add=(x,y,z)=>a.push(x,y,z,.52,.62,.74);
   for(const r of radii){
     for(let plane=0;plane<3;plane++){
       for(let i=0;i<seg;i++){
@@ -614,9 +621,9 @@ function frame(now){
   drawBody(mvp,time,A,[1.0,.29,.075],[.42,.88,.21],2.15,1.13);
   drawBody(mvp,time,B,[.18,.61,1.0],[-.36,.72,.59],-2.55,.90);
 
-  drawLines(gridBuf,gridData.length/6,mvp,time,.34,1,dist);
-  drawLines(waveBuf,waveData.length/6,mvp,time,.10,1,dist);
-  drawLines(orbitBuf,orbitData.length/6,mvp,time,.55,0,dist);
+  drawLines(gridBuf,gridData.length/6,mvp,time,.36,1,dist);
+  drawLines(waveBuf,waveData.length/6,mvp,time,.16,1,dist);
+  drawLines(orbitBuf,orbitData.length/6,mvp,time,.50,0,dist);
 
   for(const c of clocks){
     const q=projectPoint(c.p,mvp,time);
