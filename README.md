@@ -18,12 +18,12 @@ spinning around its own misaligned axis, and what that does to the space around 
   given its own amplified glow.
 - **The two faint rings are the orbital paths.** The heavier orange mass keeps
   the tighter one.
-- **A spike marks each body's spin axis.** The long end points along the body's
-  angular momentum, by the right-hand rule, and the short stub marks the other
-  side. The two are not parallel and the two bodies turn opposite ways, which is
+- **A spike marks each body's spin axis.** Both halves are the same size. The
+  bright end points along the body's angular momentum, by the right-hand rule,
+  and the dark end marks the other side. The two are not parallel and the two bodies turn opposite ways, which is
   what makes their frame-dragging twists fight each other in the middle. The
-  asymmetry is the point: a bare line would not tell you which way a body spins,
-  and two bodies sharing an axis but spinning opposite ways drag space in
+  direction matters: a bare unmarked line would not tell you which way a body
+  spins, and two bodies sharing an axis but spinning opposite ways drag space in
   opposite senses.
 - **The white marker at the center is the barycenter.** The faint line joining
   the two bodies runs through it. The heavier body sits on the shorter arm.

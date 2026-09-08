@@ -47,7 +47,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#01040a;col
   <div id="cB" class="clock b"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
   <div id="cC" class="clock c"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
 
-  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, cyan where the light body's does, grey where neither reaches. The bands sweeping outward past the pair are the gravitational waves. A spike marks each body's spin axis, long end along its angular momentum. The two are not parallel, and the two bodies turn opposite ways. The faint line joining the pair runs through the barycenter at the small white cross, with the heavier body on the shorter arm.</div>
+  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, cyan where the light body's does, grey where neither reaches. The bands sweeping outward past the pair are the gravitational waves. A spike marks each body's spin axis, bright end along its angular momentum. The two are not parallel, and the two bodies turn opposite ways. The faint line joining the pair runs through the barycenter at the small white cross, with the heavier body on the shorter arm.</div>
   <div class="foot">Drag to orbit · pinch or scroll to zoom · double-tap to reset</div>
 </div>
 
@@ -715,13 +715,14 @@ function frame(now){
   // lattice. these give the eye something to latch onto.
   const off=(c,u,d)=>[c[0]+u[0]*d,c[1]+u[1]*d,c[2]+u[2]*d];
   const RA=.21*.85,RB=.21*.68;
-  // one radius per axis, so the two ends read as a single spike rather than as
-  // two different objects. length and brightness carry the direction. varying
-  // thickness as well was three signals for one bit of information.
-  drawCone(mvp,time,off(A,SPIN_A,RA*.65),SPIN_A,POLE_A-RA*.65,.038,[1.0,.55,.20]);
-  drawCone(mvp,time,off(A,SPIN_A,-RA*.65),neg(SPIN_A),POLE_A*.50,.038,[.62,.26,.09]);
-  drawCone(mvp,time,off(B,SPIN_B,RB*.65),SPIN_B,POLE_B-RB*.65,.035,[.30,.80,1.0]);
-  drawCone(mvp,time,off(B,SPIN_B,-RB*.65),neg(SPIN_B),POLE_B*.50,.035,[.13,.38,.60]);
+  // compass-needle convention: both ends identical in length and radius, so
+  // neither looks like an error, and brightness alone marks which way the body
+  // turns. size differences read as a mistake, a light and dark half does not.
+  const LA=.34,LB=.31;
+  drawCone(mvp,time,off(A,SPIN_A,RA*.65),SPIN_A,LA,.038,[1.0,.58,.22]);
+  drawCone(mvp,time,off(A,SPIN_A,-RA*.65),neg(SPIN_A),LA,.038,[.36,.14,.05]);
+  drawCone(mvp,time,off(B,SPIN_B,RB*.65),SPIN_B,LB,.035,[.30,.80,1.0]);
+  drawCone(mvp,time,off(B,SPIN_B,-RB*.65),neg(SPIN_B),LB,.035,[.07,.22,.38]);
 
   drawLines(gridBuf,gridData.length/6,mvp,time,.36,1,dist);
   drawLines(waveBuf,waveData.length/6,mvp,time,.16,1,dist);
