@@ -88,6 +88,53 @@ any region. Correct, not a bug.
 **The spin-axis halves are equal in size, direction marked only by brightness.**
 A size difference reads as a defect. This was iterated on three times. Leave it.
 
+## Next up: merge and ringdown
+
+Ozan asked for this on 2026-09-08 as the next piece of work. Today the pair
+inspirals and then eases back out and loops. The next step is to let it actually
+collide: merge into a single body that rings and settles, then reset. It is what
+LIGO detects and the most dramatic thing still missing.
+
+Rough shape, not binding:
+
+1. **Carry the inspiral further.** `SEP_MIN` is 0.42 today, picked so the two
+   spheres never touch. A merge needs it to run down to roughly 0.10, where they
+   do.
+
+2. **The merge is mostly a rendering change.** As `sep` approaches zero both
+   bodies converge on the origin and the existing two-term attraction in
+   `deform()` sums into one well on its own. The work is in drawing: swap the
+   two spheres for one larger sphere at the origin, sized by the combined mass.
+
+3. **The remnant's spin axis is the vector sum.** Angular momentum adds, so the
+   merged axis is `SPIN_A * |L_A| + SPIN_B * |L_B|` plus the orbital angular
+   momentum, which dominates in a real merger. That lands on a new tilt between
+   the two. Worth computing rather than picking by eye.
+
+4. **Ringdown is a decaying quadrupolar wobble.** One damped oscillation at a
+   fixed ringdown frequency, amplitude decaying over two or three seconds. The
+   far-field wave frequency drops to it and fades. The existing near-zone `beat`
+   term is the natural place to hang it.
+
+5. **A flash at the moment of merge** covers the two-to-one transition. Standard
+   visual language, and it hides a cut that would otherwise read as a glitch.
+
+Traps it will hit:
+
+- `deformCPU()` must mirror any new ringdown term or the clocks drift off the
+  lattice. Same invariant as always.
+- The color tint is `(wa - wb) / (wa + wb)` across two bodies. With one remnant
+  that expression stops meaning anything. Decide what color the merged region
+  should be before writing the shader, rather than shipping whatever the formula
+  happens to produce.
+- The clocks will dip hard as the potential spikes at merge. Correct and worth
+  keeping, but check the 0.40 clamp in `clockRateAt` does not flatten it.
+- Adding phases means a state machine where there is now one `sep` curve. Keep
+  the phase and wave-phase accumulators running across every transition or the
+  orbit will jump.
+
+Estimated at roughly double the inspiral, which took one working session.
+
 ## Verifying a change
 
 Use the verify-Chrome lane, never the browser extension:
