@@ -18,6 +18,11 @@ spinning around its own misaligned axis, and what that does to the space around 
   given its own amplified glow.
 - **The two faint rings are the orbital paths.** The heavier orange mass keeps
   the tighter one.
+- **Each body carries a pole along its own spin axis**, with a bright marker at
+  one end and a dark one at the other. The two poles are not parallel, which is
+  what makes the frame-dragging twists fight each other in the middle.
+- **The white marker at the center is the barycenter.** The faint line joining
+  the two bodies runs through it. The heavier body sits on the shorter arm.
 - **The three clocks are pinned to fixed coordinates.** They drift on screen
   because the coordinates themselves are being dragged. Their hands run slow in
   proportion to how deep in the potential they sit.
