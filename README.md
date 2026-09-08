@@ -33,7 +33,11 @@ spinning around its own misaligned axis, and what that does to the space around 
 
 ## Controls
 
-Drag to orbit. Pinch or scroll to zoom. Double-tap or double-click to reset.
+Drag to turn the view: press and hold, then move, and the camera swings around
+the pair. Scroll or pinch to zoom. Double-click or double-tap to reset.
+
+On a Mac trackpad with tap-to-click enabled, a light tap-and-slide will not
+register as a drag. Press the trackpad down and keep it held while moving.
 
 ## What this is not
 

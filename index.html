@@ -48,7 +48,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#01040a;col
   <div id="cC" class="clock c"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
 
   <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, cyan where the light body's does, grey where neither reaches. The bands sweeping outward past the pair are the gravitational waves. A spike marks each body's spin axis, bright end along its angular momentum. The two are not parallel, and the two bodies turn opposite ways. The faint line joining the pair runs through the barycenter at the small white cross, with the heavier body on the shorter arm.</div>
-  <div class="foot">Drag to orbit · pinch or scroll to zoom · double-tap to reset</div>
+  <div class="foot" id="foot">Drag to turn the view · scroll to zoom · double-click to reset</div>
 </div>
 
 <div id="error">WebGL could not start.<br>This page needs a browser with WebGL enabled.</div>
@@ -459,6 +459,13 @@ function resize(){
   canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);gl.viewport(0,0,canvas.width,canvas.height);
 }
 addEventListener("resize",resize);resize();
+
+// "orbit" is 3D jargon, and the gesture names differ by device. say what the
+// person in front of this page can actually do.
+document.getElementById("foot").textContent =
+  matchMedia("(pointer:coarse)").matches
+    ? "Drag to turn the view · pinch to zoom · double-tap to reset"
+    : "Drag to turn the view · scroll to zoom · double-click to reset";
 
 const lp={
   pos:gl.getAttribLocation(lineProg,"aPos"),
