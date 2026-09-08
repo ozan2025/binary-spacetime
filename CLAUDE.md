@@ -117,14 +117,20 @@ Commit to `main` and GitHub Pages rebuilds on its own. Two gotchas:
 - Wait for the rebuild before telling Ozan it is live. Sending him to refresh
   into the old version wasted a round trip.
 
-## Working agreement, needs re-confirming
+## Working agreement
 
-Ozan authorized committing straight to `main` for the initial commit, on the
-grounds that the repo was empty and opening a PR against nothing is ceremony
-with no reviewer behind it. In practice the entire first session then continued
-that way, one commit per change, with Ozan reviewing results visually in the
-browser rather than reviewing diffs.
+**Commit straight to `main`. No issue, no branch, no PR, no merge ask.** Ozan
+confirmed this for this repo on 2026-09-08. It overrides the branch-and-ask
+chain in `~/.claude/CLAUDE.md` here, and only here.
 
-That continuation was never re-confirmed with him. Before the next batch of
-work, ask whether to keep straight-to-main for this hobby repo or move to the
-normal branch-and-ask chain in `~/.claude/CLAUDE.md`. Do not assume.
+It works because this is a solo hobby repo with no collaborators, nothing in
+production depends on it, and Ozan reviews the result visually in the browser
+rather than reviewing diffs. The review that matters is him looking at the live
+page, so a PR would add ceremony with no reviewer behind it.
+
+One commit per coherent change, with a real commit message. The message is the
+only record of why a constant moved, so write it properly.
+
+Everything else in the global rules still holds. Force-push, discarding
+uncommitted work, `reset --hard`, `git clean`, deleting an unmerged branch, and
+anything destructive still need an explicit yes.
