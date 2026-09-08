@@ -715,10 +715,13 @@ function frame(now){
   // lattice. these give the eye something to latch onto.
   const off=(c,u,d)=>[c[0]+u[0]*d,c[1]+u[1]*d,c[2]+u[2]*d];
   const RA=.21*.85,RB=.21*.68;
-  drawCone(mvp,time,off(A,SPIN_A,RA*.65),SPIN_A,POLE_A-RA*.65,.040,[1.0,.55,.20]);
-  drawCone(mvp,time,off(A,SPIN_A,-RA*.65),neg(SPIN_A),POLE_A*.44,.032,[.62,.26,.09]);
-  drawCone(mvp,time,off(B,SPIN_B,RB*.65),SPIN_B,POLE_B-RB*.65,.036,[.30,.80,1.0]);
-  drawCone(mvp,time,off(B,SPIN_B,-RB*.65),neg(SPIN_B),POLE_B*.44,.029,[.13,.38,.60]);
+  // one radius per axis, so the two ends read as a single spike rather than as
+  // two different objects. length and brightness carry the direction. varying
+  // thickness as well was three signals for one bit of information.
+  drawCone(mvp,time,off(A,SPIN_A,RA*.65),SPIN_A,POLE_A-RA*.65,.038,[1.0,.55,.20]);
+  drawCone(mvp,time,off(A,SPIN_A,-RA*.65),neg(SPIN_A),POLE_A*.50,.038,[.62,.26,.09]);
+  drawCone(mvp,time,off(B,SPIN_B,RB*.65),SPIN_B,POLE_B-RB*.65,.035,[.30,.80,1.0]);
+  drawCone(mvp,time,off(B,SPIN_B,-RB*.65),neg(SPIN_B),POLE_B*.50,.035,[.13,.38,.60]);
 
   drawLines(gridBuf,gridData.length/6,mvp,time,.36,1,dist);
   drawLines(waveBuf,waveData.length/6,mvp,time,.16,1,dist);
