@@ -39,7 +39,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#01040a;col
 <div class="hud">
   <div class="title">
     <h1>A Tilted Binary Warps Spacetime Asymmetrically</h1>
-    <p>Unequal masses orbit a shifted barycenter, while each body spins around its own tilted axis.</p>
+    <p>Unequal masses spiral inward on a tilted orbit, each spinning around its own misaligned axis.</p>
     <div class="badge">CONCEPTUAL BINARY / FRAME-DRAGGING / GRAVITATIONAL-WAVE VISUALIZATION</div>
   </div>
 
@@ -47,7 +47,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#01040a;col
   <div id="cB" class="clock b"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
   <div id="cC" class="clock c"><div class="hand"></div><div class="dot"></div><div class="lab"></div></div>
 
-  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, cyan where the light body's does, grey where neither reaches. The bands sweeping outward past the pair are the gravitational waves. A spike marks each body's spin axis, bright end along its angular momentum. The two are not parallel, and the two bodies turn opposite ways. The faint line joining the pair runs through the barycenter at the small white cross, with the heavier body on the shorter arm.</div>
+  <div class="legend"><b>Brightness is warping.</b> A line glows in proportion to how far it has been dragged from where it would sit in flat space. <b>Color is ownership.</b> Orange where the heavy body's frame-dragging twist wins, cyan where the light body's does, grey where neither reaches. The bands sweeping outward past the pair are the gravitational waves. A spike marks each body's spin axis, bright end along its angular momentum. The two are not parallel, and the two bodies turn opposite ways. The faint line joining the pair runs through the barycenter at the small white cross, with the heavier body on the shorter arm. <b>The pair is inspiraling.</b> The waves carry energy away, so the orbit tightens and the chirp speeds up, then it eases back out and runs again.</div>
   <div class="foot" id="foot">Drag to turn the view · scroll to zoom · double-click to reset</div>
 </div>
 
@@ -69,6 +69,16 @@ uniform float uTime;
 uniform float uDeform;
 uniform float uCamDist;
 uniform float uPointSize;
+// orbit state, integrated on the CPU. the phase cannot be derived from uTime
+// any more: once the rate changes, rate*time is not the accumulated angle and
+// the bodies would jump. the JS is now the single source of truth for all of
+// these, which also removes the old hand-ported duplication.
+uniform float uPhase;
+uniform float uRadA;
+uniform float uRadB;
+uniform float uWavePhase;
+uniform float uWaveAmp;
+uniform float uScale;
 varying vec3 vColor;
 varying float vWarp;
 varying float vFade;
@@ -92,14 +102,13 @@ vec3 tiltOrbit(vec3 p){
 }
 
 vec3 bodyA(){
-  float a=uTime*0.62;
-  // heavier body, smaller orbital radius
-  return tiltOrbit(vec3(cos(a)*0.48,0.0,sin(a)*0.48));
+  // heavier body, shorter arm. both radii shrink together as the pair
+  // inspirals, so the mass ratio they encode stays fixed.
+  return tiltOrbit(vec3(cos(uPhase)*uRadA,0.0,sin(uPhase)*uRadA));
 }
 vec3 bodyB(){
-  float a=uTime*0.62+PI;
-  // lighter body, larger orbital radius
-  return tiltOrbit(vec3(cos(a)*0.88,0.0,sin(a)*0.88));
+  float a=uPhase+PI;
+  return tiltOrbit(vec3(cos(a)*uRadB,0.0,sin(a)*uRadB));
 }
 
 vec3 twistAroundAxis(vec3 p, vec3 center, vec3 axis, float amount){
@@ -146,18 +155,18 @@ vec3 deform(vec3 p, out float outTa, out float outTb, out float outWave){
 
   // far-field gravitational-wave-like stretch/squeeze
   float r=length(p)+0.001;
-  float wave=0.032*sin(7.2*r-uTime*4.5)/(0.55+r);
+  float wave=uWaveAmp*sin(7.2*r-uWavePhase)/(0.55+r);
   float envelope=smoothstep(0.78,1.38,r);
 
   // use the tilted orbital phase to orient the quadrupolar pattern
   vec3 q=Rx(0.42)*Rz(-0.34)*p;
-  float phase=atan(q.z,q.x)-uTime*0.62;
+  float phase=atan(q.z,q.x)-uPhase;
   float plus=cos(2.0*phase);
   float crossm=sin(2.0*phase);
 
   // far-field displacement is ~0.01, far too small to light anything on its
   // own, so the ripple amplitude gets its own strongly amplified glow term
-  outWave=clamp(abs(wave)*(0.35+0.65*abs(plus))*envelope*58.0,0.0,1.0);
+  outWave=clamp(abs(wave)*(0.35+0.65*abs(plus))*envelope*46.0,0.0,1.0);
 
   q.x *= 1.0 + wave*plus*envelope;
   q.z *= 1.0 - wave*plus*envelope;
@@ -169,15 +178,18 @@ vec3 deform(vec3 p, out float outTa, out float outTb, out float outWave){
 }
 
 void main(){
-  vec3 p=aPos;
+  // uScale shrinks the orbit-path rings with the inspiral. everything else
+  // passes 1.
+  vec3 base=aPos*uScale;
+  vec3 p=base;
   float ta=0.0, tb=0.0, wv=0.0;
   // uDeform=0 draws reference geometry (orbit paths) through flat space
-  if(uDeform>0.5) p=deform(aPos,ta,tb,wv);
+  if(uDeform>0.5) p=deform(base,ta,tb,wv);
   gl_Position=uMVP*vec4(p,1.0);
 
   // how far this vertex was dragged: the warping becomes the light source.
   // undeformed reference geometry gets a fixed mid value so it stays visible.
-  float disp=length(p-aPos);
+  float disp=length(p-base);
   float near=pow(1.0-exp(-disp*6.0),1.05);
   vWarp=uDeform>0.5 ? max(near,wv) : 0.42;
 
@@ -211,7 +223,10 @@ void main(){
   vec3 tintA=vec3(1.00,0.34,0.06);
   vec3 tintB=vec3(0.06,0.74,1.00);
   vec3 tint=mix(tintB,tintA,vTwist*0.5+0.5);
-  vec3 c=mix(vColor,tint,vTwistMag);
+  // where the two twists are balanced the mix would land on pale white, which
+  // reads as blown out rather than as contested. fade back to the neutral
+  // lattice colour instead, leaving a grey seam between the two territories.
+  vec3 c=mix(vColor,tint,vTwistMag*(0.18+0.82*abs(vTwist)));
   float intensity=mix(0.16,4.20,vWarp)*mix(0.35,1.05,vFade);
   gl_FragColor=vec4(c*intensity,uAlpha);
 }
@@ -504,11 +519,25 @@ const lp={
   alpha:gl.getUniformLocation(lineProg,"uAlpha"),
   deform:gl.getUniformLocation(lineProg,"uDeform"),
   camDist:gl.getUniformLocation(lineProg,"uCamDist"),
-  pointSize:gl.getUniformLocation(lineProg,"uPointSize")
+  pointSize:gl.getUniformLocation(lineProg,"uPointSize"),
+  phase:gl.getUniformLocation(lineProg,"uPhase"),
+  radA:gl.getUniformLocation(lineProg,"uRadA"),
+  radB:gl.getUniformLocation(lineProg,"uRadB"),
+  wavePhase:gl.getUniformLocation(lineProg,"uWavePhase"),
+  waveAmp:gl.getUniformLocation(lineProg,"uWaveAmp"),
+  scale:gl.getUniformLocation(lineProg,"uScale")
 };
+function setOrbitUniforms(scale){
+  gl.uniform1f(lp.phase,orbitPhase);
+  gl.uniform1f(lp.radA,ORB_A*sep);
+  gl.uniform1f(lp.radB,ORB_B*sep);
+  gl.uniform1f(lp.wavePhase,wavePhase);
+  gl.uniform1f(lp.waveAmp,waveAmp);
+  gl.uniform1f(lp.scale,scale);
+}
 // lines blend additively with depth writes off, so overlapping strands glow
 // instead of fighting over draw order
-function drawLines(buf,count,mvp,time,alpha,deformFlag,camDist){
+function drawLines(buf,count,mvp,time,alpha,deformFlag,camDist,scale=1){
   gl.useProgram(lineProg);
   gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
   gl.depthMask(false);
@@ -520,6 +549,7 @@ function drawLines(buf,count,mvp,time,alpha,deformFlag,camDist){
   gl.uniform1f(lp.alpha,alpha);
   gl.uniform1f(lp.deform,deformFlag);
   gl.uniform1f(lp.camDist,camDist);
+  setOrbitUniforms(scale);
   gl.drawArrays(gl.LINES,0,count);
 }
 
@@ -547,6 +577,7 @@ function drawStars(mvp,time,camDist){
   gl.uniform1f(lp.deform,0);
   gl.uniform1f(lp.camDist,camDist);
   gl.uniform1f(lp.pointSize,2.1*dpr);
+  setOrbitUniforms(1);
   gl.drawArrays(gl.POINTS,0,starData.length/6);
 }
 
@@ -558,11 +589,46 @@ function tiltOrbitCPU(p){
   c=Math.cos(.34);s=Math.sin(.34);
   return [c*x1-s*y1,s*x1+c*y1,z1];
 }
-function bodyPositions(time){
-  const a=time*.62;
+// Inspiral. A real binary radiates orbital energy away as gravitational waves,
+// so the separation shrinks and, by Kepler, the orbital frequency climbs. That
+// rising chirp is what LIGO actually hears.
+//
+// a(t) follows the (1 - t/t_merge)^(1/4) shape, which is slow for most of the
+// run and then collapses at the end. omega goes as a^(-3/2). The wave carries
+// twice the orbital frequency and grows in amplitude as the orbit tightens.
+//
+// This does not merge. After the inspiral it eases back out over a few seconds
+// and runs again, so there is always something to watch.
+const ORB_A=.48,ORB_B=.88,OMEGA0=.62,WAVE_RATE0=4.5,WAVE_AMP0=.032;
+const SEP_MAX=1.0,SEP_MIN=.42,T_IN=22,T_OUT=5,T_CYCLE=T_IN+T_OUT;
+const SEP_K=1-Math.pow(SEP_MIN/SEP_MAX,4);
+
+let sep=SEP_MAX,omega=OMEGA0,orbitPhase=0,wavePhase=0,waveAmp=WAVE_AMP0;
+
+function separationAt(tc){
+  if(tc<T_IN) return SEP_MAX*Math.pow(1-SEP_K*(tc/T_IN),.25);
+  const u=(tc-T_IN)/T_OUT;
+  return SEP_MIN+(SEP_MAX-SEP_MIN)*(u*u*(3-2*u));
+}
+
+// phase is integrated, never computed as rate times elapsed time. with a
+// changing rate the second form is simply the wrong angle.
+function updateOrbit(dt,time){
+  sep=separationAt(time%T_CYCLE);
+  omega=OMEGA0*Math.pow(sep,-1.5);
+  // wrapped, because both only ever feed sin/cos and an unwrapped accumulator
+  // would drift into float32 precision loss on a page left open for hours
+  const TAU=Math.PI*2;
+  orbitPhase=(orbitPhase+omega*dt)%TAU;
+  wavePhase=(wavePhase+WAVE_RATE0*(omega/OMEGA0)*dt)%TAU;
+  waveAmp=WAVE_AMP0*Math.pow(SEP_MAX/sep,.35);
+}
+
+function bodyPositions(){
+  const rA=ORB_A*sep,rB=ORB_B*sep;
   return [
-    tiltOrbitCPU([Math.cos(a)*.48,0,Math.sin(a)*.48]),
-    tiltOrbitCPU([Math.cos(a+Math.PI)*.88,0,Math.sin(a+Math.PI)*.88])
+    tiltOrbitCPU([Math.cos(orbitPhase)*rA,0,Math.sin(orbitPhase)*rA]),
+    tiltOrbitCPU([Math.cos(orbitPhase+Math.PI)*rB,0,Math.sin(orbitPhase+Math.PI)*rB])
   ];
 }
 
@@ -677,7 +743,7 @@ function twistCPU(p,center,axis,amount){
 
 function deformCPU(p,time){
   let [x,y,z]=p;
-  const [A,B]=bodyPositions(time);
+  const [A,B]=bodyPositions();
 
   let ra=Math.hypot(x-A[0],y-A[1],z-A[2])+.05;
   let rb=Math.hypot(x-B[0],y-B[1],z-B[2])+.05;
@@ -696,10 +762,10 @@ function deformCPU(p,time){
 
   // far-field stretch/squeeze, ported from deform() in LINE_VS above
   const r=Math.hypot(x,y,z)+.001;
-  const wave=.032*Math.sin(7.2*r-time*4.5)/(.55+r);
+  const wave=waveAmp*Math.sin(7.2*r-wavePhase)/(.55+r);
   const envelope=smoothstep(.78,1.38,r);
   let [qx,qy,qz]=untiltCPU([x,y,z]);
-  const phase=Math.atan2(qz,qx)-time*.62;
+  const phase=Math.atan2(qz,qx)-orbitPhase;
   const plus=Math.cos(2*phase),crossm=Math.sin(2*phase);
   qx*=1+wave*plus*envelope;
   qz*=1-wave*plus*envelope;
@@ -720,7 +786,7 @@ function projectPoint(p,mvp,time){
 }
 
 function clockRateAt(p,time){
-  const [A,B]=bodyPositions(time);
+  const [A,B]=bodyPositions();
   const ra=Math.hypot(p[0]-A[0],p[1]-A[1],p[2]-A[2]);
   const rb=Math.hypot(p[0]-B[0],p[1]-B[1],p[2]-B[2]);
   // stronger contribution from heavier body A
@@ -757,7 +823,8 @@ function frame(now){
 
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
-  const [A,B]=bodyPositions(time);
+  updateOrbit(dt,time);
+  const [A,B]=bodyPositions();
 
   // opaque bodies first so they lay down depth, then additive lines on top
   drawBody(mvp,time,A,[1.0,.29,.075],AXIS_A,RATE_A,.85);
@@ -771,7 +838,9 @@ function frame(now){
   // compass-needle convention: both ends identical in length and radius, so
   // neither looks like an error, and brightness alone marks which way the body
   // turns. size differences read as a mistake, a light and dark half does not.
-  const LA=.34,LB=.31;
+  // spikes shrink a little as the pair closes, so they stop crossing into the
+  // other body at the tightest part of the inspiral
+  const sk=.55+.45*sep,LA=.34*sk,LB=.31*sk;
   drawCone(mvp,time,off(A,SPIN_A,RA*.65),SPIN_A,LA,.038,[1.0,.58,.22]);
   drawCone(mvp,time,off(A,SPIN_A,-RA*.65),neg(SPIN_A),LA,.038,[.36,.14,.05]);
   drawCone(mvp,time,off(B,SPIN_B,RB*.65),SPIN_B,LB,.035,[.30,.80,1.0]);
@@ -780,7 +849,7 @@ function frame(now){
   drawStars(mvp,time,dist);
   drawLines(gridBuf,gridData.length/6,mvp,time,.36,1,dist);
   drawLines(waveBuf,waveData.length/6,mvp,time,.16,1,dist);
-  drawLines(orbitBuf,orbitData.length/6,mvp,time,.50,0,dist);
+  drawLines(orbitBuf,orbitData.length/6,mvp,time,.50,0,dist,sep);
 
   buildOverlay(A,B);
   drawLines(overlayBuf,OVERLAY_SEGS*2,mvp,time,.95,0,dist);

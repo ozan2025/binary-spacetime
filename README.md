@@ -36,6 +36,17 @@ spinning around its own misaligned axis, and what that does to the space around 
   with everything else. They are there so the lattice reads as sitting inside a
   larger space rather than floating in a void.
 
+- **The pair inspirals.** A real binary radiates orbital energy away as
+  gravitational waves, so the separation shrinks and, by Kepler, the orbital
+  frequency climbs. That rising chirp is what LIGO actually detects. Here the
+  separation follows the `(1 - t/t_merge)^(1/4)` shape, slow for most of the run
+  and then collapsing at the end, with the orbital rate going as `a^(-3/2)`. It
+  does not merge. After the inspiral it eases back out over a few seconds and
+  runs again.
+- **The color story collapses at closest approach, on purpose.** When the pair
+  is that tight, every point is roughly equidistant from both bodies, so neither
+  frame-dragging twist owns any region and the lattice returns to neutral.
+
 ## Controls
 
 Drag to turn the view: press and hold, then move, and the camera swings around
