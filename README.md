@@ -31,6 +31,11 @@ spinning around its own misaligned axis, and what that does to the space around 
   because the coordinates themselves are being dragged. Their hands run slow in
   proportion to how deep in the potential they sit.
 
+- **The stars are for scale, not for parallax.** Orbiting the camera around a
+  fixed center rotates the whole world rigidly, so distant stars swing around
+  with everything else. They are there so the lattice reads as sitting inside a
+  larger space rather than floating in a void.
+
 ## Controls
 
 Drag to turn the view: press and hold, then move, and the camera swings around

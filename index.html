@@ -68,6 +68,7 @@ uniform mat4 uMVP;
 uniform float uTime;
 uniform float uDeform;
 uniform float uCamDist;
+uniform float uPointSize;
 varying vec3 vColor;
 varying float vWarp;
 varying float vFade;
@@ -191,6 +192,10 @@ void main(){
   vFade=clamp((uCamDist+2.2-gl_Position.w)/4.4,0.0,1.0);
 
   vColor=aColor;
+
+  // only meaningful for the starfield, which draws POINTS through this same
+  // program. brighter stars render slightly larger, as they read to the eye.
+  gl_PointSize=uPointSize*(0.55+0.90*max(aColor.r,max(aColor.g,aColor.b)));
 }
 `;
 
@@ -409,6 +414,29 @@ const waveData=makeWaveRings(),waveBuf=gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,waveBuf);
 gl.bufferData(gl.ARRAY_BUFFER,waveData,gl.STATIC_DRAW);
 
+// distant stars, well outside the lattice. they do not fix the "am I moving or
+// is it spinning" ambiguity, since orbiting a fixed centre rotates the whole
+// world rigidly. what they give is scale: the lattice sits inside a larger
+// space rather than floating in a void.
+function makeStars(n=2400){
+  const a=[];
+  // deterministic, so the sky is identical on every load
+  let seed=20260907>>>0;
+  const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
+  for(let i=0;i<n;i++){
+    const u=rnd()*2-1,th=rnd()*2*Math.PI,s=Math.sqrt(Math.max(0,1-u*u));
+    const r=13+rnd()*17;
+    // skewed so most stars are faint and a few carry the frame
+    const b=.30+Math.pow(rnd(),1.9)*.95,warm=rnd();
+    a.push(s*Math.cos(th)*r,u*r,s*Math.sin(th)*r,
+           b*(.82+warm*.18),b*(.86+warm*.10),b);
+  }
+  return new Float32Array(a);
+}
+const starData=makeStars(),starBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,starBuf);
+gl.bufferData(gl.ARRAY_BUFFER,starData,gl.STATIC_DRAW);
+
 function sphere(lat=38,lon=54,r=.21,obl=.88){
   const v=[],idx=[];
   for(let y=0;y<=lat;y++){
@@ -454,8 +482,9 @@ function rotYTo(u){
   return axisAngle([u[2],0,-u[0]],Math.acos(d));
 }
 
+let dpr=1;
 function resize(){
-  const d=Math.min(devicePixelRatio||1,2),w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);
+  const d=dpr=Math.min(devicePixelRatio||1,2),w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);
   canvas.width=Math.round(w*d);canvas.height=Math.round(h*d);gl.viewport(0,0,canvas.width,canvas.height);
 }
 addEventListener("resize",resize);resize();
@@ -474,7 +503,8 @@ const lp={
   time:gl.getUniformLocation(lineProg,"uTime"),
   alpha:gl.getUniformLocation(lineProg,"uAlpha"),
   deform:gl.getUniformLocation(lineProg,"uDeform"),
-  camDist:gl.getUniformLocation(lineProg,"uCamDist")
+  camDist:gl.getUniformLocation(lineProg,"uCamDist"),
+  pointSize:gl.getUniformLocation(lineProg,"uPointSize")
 };
 // lines blend additively with depth writes off, so overlapping strands glow
 // instead of fighting over draw order
@@ -502,6 +532,22 @@ function untiltCPU(p){
   const x1=c*x-s*y,y1=s*x+c*y,z1=z;
   c=Math.cos(.42);s=Math.sin(.42);
   return [x1,c*y1-s*z1,s*y1+c*z1];
+}
+
+function drawStars(mvp,time,camDist){
+  gl.useProgram(lineProg);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+  gl.depthMask(false);
+  gl.bindBuffer(gl.ARRAY_BUFFER,starBuf);
+  gl.enableVertexAttribArray(lp.pos);gl.vertexAttribPointer(lp.pos,3,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(lp.col);gl.vertexAttribPointer(lp.col,3,gl.FLOAT,false,24,12);
+  gl.uniformMatrix4fv(lp.mvp,false,mvp);
+  gl.uniform1f(lp.time,time);
+  gl.uniform1f(lp.alpha,1.0);
+  gl.uniform1f(lp.deform,0);
+  gl.uniform1f(lp.camDist,camDist);
+  gl.uniform1f(lp.pointSize,2.1*dpr);
+  gl.drawArrays(gl.POINTS,0,starData.length/6);
 }
 
 function tiltOrbitCPU(p){
@@ -731,6 +777,7 @@ function frame(now){
   drawCone(mvp,time,off(B,SPIN_B,RB*.65),SPIN_B,LB,.035,[.30,.80,1.0]);
   drawCone(mvp,time,off(B,SPIN_B,-RB*.65),neg(SPIN_B),LB,.035,[.07,.22,.38]);
 
+  drawStars(mvp,time,dist);
   drawLines(gridBuf,gridData.length/6,mvp,time,.36,1,dist);
   drawLines(waveBuf,waveData.length/6,mvp,time,.16,1,dist);
   drawLines(orbitBuf,orbitData.length/6,mvp,time,.50,0,dist);
