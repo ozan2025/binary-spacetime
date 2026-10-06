@@ -139,7 +139,8 @@ Estimated at roughly double the inspiral, which took one working session.
 
 Use the verify-Chrome lane, never the browser extension:
 `~/.claude/skills/browser-lanes/scripts/verify-cdp.mjs`. Its `run` takes a
-steps file (`run steps.json`) or stdin (`run - < steps.json`).
+steps file (`node verify-cdp.mjs run steps.json`) or stdin
+(`node verify-cdp.mjs run - < steps.json`).
 
 One thing that costs time here:
 
