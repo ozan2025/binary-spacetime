@@ -138,13 +138,12 @@ Estimated at roughly double the inspiral, which took one working session.
 ## Verifying a change
 
 Use the verify-Chrome lane, never the browser extension:
-`~/.claude/skills/review-loop/scripts/verify-cdp.mjs`
+`~/.claude/skills/browser-lanes/scripts/verify-cdp.mjs`. Its `run` takes a
+steps file (`node verify-cdp.mjs run steps.json`) or stdin
+(`node verify-cdp.mjs run - < steps.json`).
 
-Two things that cost time here:
+One thing that costs time here:
 
-- `run` accepts steps only via stdin: `node verify-cdp.mjs run - < steps.json`.
-  Passing a file path fails with a JSON parse error, despite the usage line
-  saying it takes one.
 - Synthetic pointer events need a frame boundary before you read the DOM.
   Dispatching a drag and reading clock positions in the same synchronous block
   always reports no movement, because no animation frame has run yet. Put a
